@@ -1,0 +1,48 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06101e"/>
+      <stop offset="100%" stop-color="#0b1f40"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="0" y="0" width="1024" height="1024" rx="224"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#bg)"/>
+
+  <!-- Glow -->
+  <ellipse cx="512" cy="460" rx="420" ry="420" fill="url(#glow)" clip-path="url(#squircle)"/>
+
+  <!-- Waveform bars — left side (fade outward) -->
+  <rect x="108" y="390" width="52" height="140" rx="26" fill="#60a5fa" opacity="0.28"/>
+  <rect x="192" y="340" width="52" height="240" rx="26" fill="#60a5fa" opacity="0.46"/>
+  <rect x="276" y="282" width="52" height="356" rx="26" fill="#60a5fa" opacity="0.66"/>
+
+  <!-- Waveform bars — right side (fade outward) -->
+  <rect x="696" y="282" width="52" height="356" rx="26" fill="#60a5fa" opacity="0.66"/>
+  <rect x="780" y="340" width="52" height="240" rx="26" fill="#60a5fa" opacity="0.46"/>
+  <rect x="864" y="390" width="52" height="140" rx="26" fill="#60a5fa" opacity="0.28"/>
+
+  <!-- Inner flanking bars -->
+  <rect x="360" y="560" width="52" height="220" rx="26" fill="#60a5fa" opacity="0.62"/>
+  <rect x="612" y="560" width="52" height="220" rx="26" fill="#60a5fa" opacity="0.62"/>
+
+  <!-- Central Shield -->
+  <path d="M512 240 l110 -60 l110 60 v130 a110 110 0 0 1 -220 0 v-130 z" fill="#1e3a8a"/>
+  <path d="M512 240 l110 -60 l110 60 v130 a110 110 0 0 1 -220 0 v-130 z" fill="none" stroke="#60a5fa" stroke-width="8" stroke-linejoin="round"/>
+
+  <!-- Mini waveform inside shield -->
+  <path d="M536 330 q14 -34 28 0 q14 34 28 0 q14 -34 28 0 q14 34 28 0" fill="none" stroke="#bfdbfe" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Wordmark -->
+  <text x="512" y="860" font-family="Georgia, 'Times New Roman', serif" font-size="120" font-weight="700" fill="#60a5fa" text-anchor="middle" letter-spacing="36">HEU</text>
+
+  <!-- Tagline -->
+  <text x="512" y="930" font-family="Arial, Helvetica, sans-serif" font-size="42" fill="#2d5a8a" text-anchor="middle" letter-spacing="12">LOCAL · PRIVATE</text>
+</svg>

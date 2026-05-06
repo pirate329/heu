@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$SCRIPT_DIR/.."
-VERSION="1.0"
+VERSION="0.1"
 APP_NAME="heu"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 
@@ -23,6 +23,7 @@ mkdir -p "${APP}/Contents/Resources"
 
 cp build/heu               "${APP}/Contents/MacOS/heu"
 cp src/Info.plist          "${APP}/Contents/Info.plist"
+cp assets/heu.icns         "${APP}/Contents/Resources/heu.icns"
 chmod +x "${APP}/Contents/MacOS/heu"
 
 echo "==> Ad-hoc signing..."

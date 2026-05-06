@@ -12,8 +12,9 @@
 #include <algorithm>
 #include <cmath>
 
-// ── Global singleton ─────────────────────────────────────────────────────────
-HeuEngine * g_engine = nullptr;
+// ── Global singletons ────────────────────────────────────────────────────────
+HeuEngine * g_engine   = nullptr;
+bool        g_first_run = false;
 
 // ── Audio capture callback ────────────────────────────────────────────────────
 // Called from CoreAudio real-time thread. Must be lock-free and non-blocking.

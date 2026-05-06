@@ -3,6 +3,7 @@
 #import "hotkey.h"
 #import "ModelManager.h"
 #import "SettingsPanel.h"
+#include "engine.hpp"
 #include "processing_loop.hpp"
 #include "whisper.h"
 #include <cmath>
@@ -60,6 +61,14 @@
                                                     selector:@selector(onAnimTick:)
                                                     userInfo:nil
                                                      repeats:YES];
+
+    // ── First-run: auto-open Settings so user can download a model ───────────
+    if (g_first_run) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [[SettingsPanel shared] show];
+        });
+    }
 
     // ── fn push-to-talk ───────────────────────────────────────────────────────
     __weak typeof(self) ws2 = self;

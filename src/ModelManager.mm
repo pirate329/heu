@@ -1,9 +1,13 @@
 // ModelManager.mm — model catalog, download via NSURLSession, hot-switch
 #import "ModelManager.h"
 #include "engine.hpp"
+#include "processing_loop.hpp"
 #include "whisper.h"
 #include <thread>
 #include <chrono>
+
+// Declared in engine.cpp
+extern bool g_first_run;
 
 static NSString * const kHFBase =
     @"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
@@ -77,7 +81,12 @@ static NSString * const kHFBase =
 }
 
 - (NSString *)modelsDirectory {
-    return [_currentModelPath stringByDeletingLastPathComponent] ?: NSHomeDirectory();
+    if (_currentModelPath)
+        return [_currentModelPath stringByDeletingLastPathComponent];
+    // Default: ~/Library/Application Support/heu/models/
+    NSString * appSupport = NSSearchPathForDirectoriesInDomains(
+        NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+    return [appSupport stringByAppendingPathComponent:@"heu/models"];
 }
 
 - (NSString *)pathForModel:(WhisperModel *)model {
@@ -174,28 +183,32 @@ didCompleteWithError:(NSError *)error {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         if (!g_engine) return;
 
-        // Pause the processing loop until we're done swapping
-        g_engine->paused.store(true, std::memory_order_release);
+        bool isFirstLoad = (g_engine->wctx == nullptr);
 
-        // Wait for processing to be idle (DETECTING state)
-        using clock = std::chrono::steady_clock;
-        auto deadline = clock::now() + std::chrono::seconds(30);
-        while (g_engine->state.load() != HeuState::DETECTING) {
-            if (clock::now() > deadline) {
-                g_engine->paused.store(false, std::memory_order_release);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    NSError * e = [NSError errorWithDomain:@"heu" code:1
-                        userInfo:@{NSLocalizedDescriptionKey:@"Engine did not reach idle state"}];
-                    [self.delegate modelSwitchFinished:model error:e];
-                });
-                return;
+        if (!isFirstLoad) {
+            // Pause the processing loop until we're done swapping
+            g_engine->paused.store(true, std::memory_order_release);
+
+            // Wait for processing to be idle (DETECTING state)
+            using clock = std::chrono::steady_clock;
+            auto deadline = clock::now() + std::chrono::seconds(30);
+            while (g_engine->state.load() != HeuState::DETECTING) {
+                if (clock::now() > deadline) {
+                    g_engine->paused.store(false, std::memory_order_release);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        NSError * e = [NSError errorWithDomain:@"heu" code:1
+                            userInfo:@{NSLocalizedDescriptionKey:@"Engine did not reach idle state"}];
+                        [self.delegate modelSwitchFinished:model error:e];
+                    });
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
 
-        // Free old context, load new one
-        whisper_free(g_engine->wctx);
-        g_engine->wctx = nullptr;
+            // Free old context
+            whisper_free(g_engine->wctx);
+            g_engine->wctx = nullptr;
+        }
 
         whisper_context_params cparams = whisper_context_default_params();
         cparams.use_gpu    = true;
@@ -215,7 +228,33 @@ didCompleteWithError:(NSError *)error {
         }
         fflush(stderr);
 
-        g_engine->paused.store(false, std::memory_order_release);
+        if (!isFirstLoad) {
+            g_engine->paused.store(false, std::memory_order_release);
+        }
+
+        // First load: start mic and processing thread now that we have a model
+        if (isFirstLoad && newCtx) {
+            // Init and start microphone
+            ma_device_config cfg = ma_device_config_init(ma_device_type_capture);
+            cfg.capture.format   = ma_format_f32;
+            cfg.capture.channels = 1;
+            cfg.sampleRate       = 16000;
+            cfg.dataCallback     = audio_data_callback;
+            cfg.pUserData        = g_engine;
+            if (ma_device_init(nullptr, &cfg, &g_engine->ma_dev) == MA_SUCCESS) {
+                g_engine->ma_ok = true;
+                ma_device_start(&g_engine->ma_dev);
+                fprintf(stderr, "[heu] microphone started after first model load\n");
+            } else {
+                fprintf(stderr, "[heu] failed to start microphone\n");
+            }
+            fflush(stderr);
+            // Start the processing thread
+            g_engine->proc_thread = std::thread(processing_loop, g_engine);
+            g_first_run = false;
+            fprintf(stderr, "[heu] engine started\n"); fflush(stderr);
+        }
+
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.delegate modelSwitchFinished:model error:err];
         });

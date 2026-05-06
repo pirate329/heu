@@ -71,6 +71,9 @@ struct HeuEngine {
 // Global singleton. Defined in engine.cpp, assigned in main.mm.
 extern HeuEngine * g_engine;
 
+// True when the app launched with no model — Settings panel opens automatically.
+extern bool g_first_run;
+
 // ── Ring buffer helpers (engine.cpp) ─────────────────────────────────────────
 std::vector<float> grab_last_ms(HeuEngine * eng, int ms);
 std::vector<float> grab_since  (HeuEngine * eng, size_t start_pos);

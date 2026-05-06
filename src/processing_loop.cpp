@@ -26,6 +26,12 @@ void processing_loop(HeuEngine * eng) {
 
         auto now = clock::now();
 
+        // Idle if no model is loaded yet (first-run setup mode)
+        if (eng->wctx == nullptr) {
+            std::this_thread::sleep_for(ms(200));
+            continue;
+        }
+
         switch (eng->state.load(std::memory_order_acquire)) {
 
         // ── DETECTING ─────────────────────────────────────────────────────────

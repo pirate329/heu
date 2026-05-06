@@ -70,12 +70,13 @@ int main(int argc, char * argv[]) {
             if (!model_path.empty()) break;
         }
         if (model_path.empty()) {
-            fprintf(stderr, "error: no model found.\n"
-                    "  Place a ggml-*.bin in ~/Library/Application Support/heu/models/\n"
-                    "  or run with: %s -m <path>\n\n", argv[0]);
-            print_usage(argv[0]); return 1;
+            // No model yet — launch in setup mode. AppDelegate will open Settings.
+            fprintf(stderr, "[heu] no model found — starting in setup mode\n");
+            fflush(stderr);
+            g_first_run = true;
+        } else {
+            fprintf(stderr, "[heu] auto-detected model: %s\n", model_path.c_str());
         }
-        fprintf(stderr, "[heu] auto-detected model: %s\n", model_path.c_str());
     }
 
     // ── Request microphone permission (macOS TCC) ─────────────────────────────
@@ -116,76 +117,77 @@ int main(int argc, char * argv[]) {
         }
     }
 
-    // ── Load whisper model ────────────────────────────────────────────────────
-    fprintf(stderr, "[heu] loading model: %s\n", model_path.c_str());
-
-    whisper_context_params cparams = whisper_context_default_params();
-    cparams.use_gpu    = use_gpu;
-    cparams.flash_attn = use_gpu;
-
     HeuEngine engine;
     engine.ring.resize(kRingSamples, 0.0f);
     g_engine = &engine;
 
-    engine.wctx = whisper_init_from_file_with_params(model_path.c_str(), cparams);
-    if (!engine.wctx) {
-        fprintf(stderr, "[heu] failed to load model '%s'\n", model_path.c_str());
-        return 1;
-    }
-    fprintf(stderr, "[heu] model loaded\n");
-    [[ModelManager shared] setCurrentModelPath:
-        [NSString stringWithUTF8String:model_path.c_str()]];
+    if (!g_first_run) {
+        // ── Load whisper model ────────────────────────────────────────────────
+        fprintf(stderr, "[heu] loading model: %s\n", model_path.c_str());
 
-    // ── List and select audio capture device ──────────────────────────────────
-    ma_context ma_ctx;
-    if (ma_context_init(nullptr, 0, nullptr, &ma_ctx) == MA_SUCCESS) {
-        ma_device_info * capture_devs = nullptr;
-        ma_uint32        capture_count = 0;
-        if (ma_context_get_devices(&ma_ctx, nullptr, nullptr,
-                                   &capture_devs, &capture_count) == MA_SUCCESS) {
-            fprintf(stderr, "[heu] available capture devices:\n");
-            for (ma_uint32 i = 0; i < capture_count; i++) {
-                fprintf(stderr, "  [%u] %s%s\n", i,
-                        capture_devs[i].name,
-                        capture_devs[i].isDefault ? "  ← default" : "");
-            }
-            fflush(stderr);
+        whisper_context_params cparams = whisper_context_default_params();
+        cparams.use_gpu    = use_gpu;
+        cparams.flash_attn = use_gpu;
+
+        engine.wctx = whisper_init_from_file_with_params(model_path.c_str(), cparams);
+        if (!engine.wctx) {
+            fprintf(stderr, "[heu] failed to load model '%s'\n", model_path.c_str());
+            return 1;
         }
-        ma_context_uninit(&ma_ctx);
+        fprintf(stderr, "[heu] model loaded\n");
+        [[ModelManager shared] setCurrentModelPath:
+            [NSString stringWithUTF8String:model_path.c_str()]];
+
+        // ── List and select audio capture device ──────────────────────────────
+        ma_context ma_ctx;
+        if (ma_context_init(nullptr, 0, nullptr, &ma_ctx) == MA_SUCCESS) {
+            ma_device_info * capture_devs = nullptr;
+            ma_uint32        capture_count = 0;
+            if (ma_context_get_devices(&ma_ctx, nullptr, nullptr,
+                                       &capture_devs, &capture_count) == MA_SUCCESS) {
+                fprintf(stderr, "[heu] available capture devices:\n");
+                for (ma_uint32 i = 0; i < capture_count; i++) {
+                    fprintf(stderr, "  [%u] %s%s\n", i,
+                            capture_devs[i].name,
+                            capture_devs[i].isDefault ? "  ← default" : "");
+                }
+                fflush(stderr);
+            }
+            ma_context_uninit(&ma_ctx);
+        }
+
+        // ── Init audio capture ────────────────────────────────────────────────
+        ma_device_config cfg = ma_device_config_init(ma_device_type_capture);
+        cfg.capture.format   = ma_format_f32;
+        cfg.capture.channels = 1;
+        cfg.sampleRate       = static_cast<ma_uint32>(kSampleRate);
+        cfg.dataCallback     = audio_data_callback;
+        cfg.pUserData        = &engine;
+
+        if (ma_device_init(nullptr, &cfg, &engine.ma_dev) != MA_SUCCESS) {
+            fprintf(stderr, "[heu] failed to init audio device\n");
+            whisper_free(engine.wctx); return 1;
+        }
+        engine.ma_ok = true;
+
+        if (ma_device_start(&engine.ma_dev) != MA_SUCCESS) {
+            fprintf(stderr, "[heu] failed to start audio device\n");
+            return 1;
+        }
+
+        fprintf(stderr, "[heu] microphone active\n");
+        fprintf(stderr, "[heu] device name    : %s\n",  engine.ma_dev.capture.name);
+        fprintf(stderr, "[heu] sample rate    : %u Hz (requested %d)\n",
+                engine.ma_dev.sampleRate, kSampleRate);
+        fprintf(stderr, "[heu] channels       : %u\n",  engine.ma_dev.capture.channels);
+        fprintf(stderr, "[heu] format         : %d  (5=f32)\n", engine.ma_dev.capture.format);
+        fflush(stderr);
+
+        // ── Start background processing thread ────────────────────────────────
+        engine.proc_thread = std::thread(processing_loop, &engine);
+
+        fprintf(stderr, "[heu] ready — say \"hey heu\" to start dictating\n");
     }
-
-    // ── Init audio capture ────────────────────────────────────────────────────
-    ma_device_config cfg = ma_device_config_init(ma_device_type_capture);
-    cfg.capture.format   = ma_format_f32;
-    cfg.capture.channels = 1;
-    cfg.sampleRate       = static_cast<ma_uint32>(kSampleRate);
-    cfg.dataCallback     = audio_data_callback;
-    cfg.pUserData        = &engine;
-
-    if (ma_device_init(nullptr, &cfg, &engine.ma_dev) != MA_SUCCESS) {
-        fprintf(stderr, "[heu] failed to init audio device\n");
-        whisper_free(engine.wctx); return 1;
-    }
-    engine.ma_ok = true;
-
-    if (ma_device_start(&engine.ma_dev) != MA_SUCCESS) {
-        fprintf(stderr, "[heu] failed to start audio device\n");
-        return 1;
-    }
-
-    // Log what miniaudio actually negotiated (may differ from requested)
-    fprintf(stderr, "[heu] microphone active\n");
-    fprintf(stderr, "[heu] device name    : %s\n",  engine.ma_dev.capture.name);
-    fprintf(stderr, "[heu] sample rate    : %u Hz (requested %d)\n",
-            engine.ma_dev.sampleRate, kSampleRate);
-    fprintf(stderr, "[heu] channels       : %u\n",  engine.ma_dev.capture.channels);
-    fprintf(stderr, "[heu] format         : %d  (5=f32)\n", engine.ma_dev.capture.format);
-    fflush(stderr);
-
-    // ── Start background processing thread ────────────────────────────────────
-    engine.proc_thread = std::thread(processing_loop, &engine);
-
-    fprintf(stderr, "[heu] ready — say \"hey heu\" to start dictating\n");
 
     // ── Cocoa event loop (blocks until Quit) ──────────────────────────────────
     @autoreleasepool {

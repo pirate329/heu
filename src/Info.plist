@@ -18,6 +18,8 @@
   <string>1</string>
   <key>CFBundleIconFile</key>
   <string>heu</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSAppleScriptEnabled</key>

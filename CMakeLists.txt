@@ -5,6 +5,9 @@ if(NOT APPLE)
     message(FATAL_ERROR "heu is macOS only")
 endif()
 
+# Target macOS 14+ (Sonoma). All APIs used are available on 14+.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version" FORCE)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OBJCXX_STANDARD 17)

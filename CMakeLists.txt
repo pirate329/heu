@@ -53,7 +53,7 @@ add_executable(heu
     src/whisper_runner.cpp
     src/processing_loop.cpp
     src/HeuHUDView.mm
-    src/WaveOverlay.mm
+    src/PillStatusView.mm
     src/AppDelegate.mm
     src/text_inserter.mm
     src/hotkey.mm

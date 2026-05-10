@@ -20,13 +20,17 @@
     heu_check_ax_permission();
 
     // ── Status bar item ───────────────────────────────────────────────────────
+    self.pillState     = HeuUIStateIdle;
+    self.lastWordCount = 0;
+    self.spinFrame     = 0;
+
     self.statusItem = [[NSStatusBar systemStatusBar]
                        statusItemWithLength:NSVariableStatusItemLength];
-    self.statusItem.button.toolTip    = @"heu — hold fn to dictate";
-    self.statusItem.button.target     = self;
-    self.statusItem.button.action     = @selector(onIconClick:);
-    self.statusItem.button.title      = @"≋ heu";
-    self.statusItem.button.font       = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    self.statusItem.button.toolTip     = @"heu — hold fn to dictate";
+    self.statusItem.button.target      = self;
+    self.statusItem.button.action      = @selector(onIconClick:);
+    self.statusItem.button.imageScaling = NSImageScaleProportionallyDown;
+    [self updatePill];
     fprintf(stderr, "[heu] status item created\n"); fflush(stderr);
 
     NSMenu * menu = [[NSMenu alloc] init];
@@ -50,10 +54,6 @@
     self.statusItem.menu = menu;
 
     // updateIcon removed — title set above is sufficient for initial state
-
-    // ── Wave overlay (top of screen, always visible) ──────────────────────────
-    self.waveOverlay = [[WaveOverlay alloc] init];
-    [self.waveOverlay startAnimating];
 
     // ── Animation timer (80 ms — drives icon pulse and live VU bars) ──────────
     self.animTimer = [NSTimer scheduledTimerWithTimeInterval:0.08
@@ -99,10 +99,27 @@
 
     g_engine->on_state_change = [ws](HeuState s) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            ws.uiState  = s;
-            ws.animTick = 0;
-            // [ws updateIcon]; // DISABLED - testing if this is what kills the icon
-            ws.waveOverlay.waveState = s;
+            ws.uiState   = s;
+            ws.animTick  = 0;
+            ws.spinFrame = 0;
+
+            switch (s) {
+                case HeuState::DETECTING:
+                    if (ws.pillState != HeuUIStateDone) {
+                        ws.pillState = HeuUIStateIdle;
+                        [ws updatePill];
+                    }
+                    break;
+                case HeuState::LISTENING:
+                    ws.pillState       = HeuUIStateListening;
+                    ws.listenStartTime = CFAbsoluteTimeGetCurrent();
+                    [ws updatePill];
+                    break;
+                case HeuState::PROCESSING:
+                    ws.pillState = HeuUIStateTranscribing;
+                    [ws updatePill];
+                    break;
+            }
 
             // Capture focused element the moment wake word fires (not for manual/fn trigger)
             if (s == HeuState::LISTENING && !g_engine->is_manual_listen.load()) {
@@ -110,7 +127,7 @@
                 ws.capturedElement = heu_capture_focused_element();
             }
 
-            // Disable HUD display during listening/transcription states
+            // HUD (currently disabled — kept wired for future use)
             if (s == HeuState::LISTENING || s == HeuState::PROCESSING) {
                 // HUD disabled - do nothing
             } else {
@@ -120,10 +137,8 @@
     };
 
     g_engine->on_transcription = [](const std::string & text) {
-        // Capture text by value for the block
         std::string textCopy = text;
         dispatch_async(dispatch_get_main_queue(), ^{
-            // Get delegate directly from NSApp — avoids weak-ref zeroing in C++ lambda
             HeuDelegate * d = (HeuDelegate *)[NSApp delegate];
             if (!d) return;
 
@@ -132,11 +147,17 @@
             fprintf(stderr, "[heu] lastText set: '%s'\n", textCopy.c_str());
             fflush(stderr);
 
+            // Count words for done pill
+            NSArray * parts = [ns componentsSeparatedByCharactersInSet:
+                               [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            NSInteger wc = 0;
+            for (NSString * w in parts) { if (w.length > 0) wc++; }
+            d.lastWordCount = wc;
+
             heu_insert_text(d.capturedElement, textCopy);
             if (d.capturedElement) { CFRelease(d.capturedElement); d.capturedElement = nullptr; }
 
             [d flashDone];
-            // [d showTranscriptionInHUD:ns]; // Disabled HUD for transcription
         });
     };
 }
@@ -161,19 +182,19 @@
 
 - (void)onAnimTick:(NSTimer *)__unused t {
     self.animTick++;
-    // Icon only updates on state change (on_state_change callback).
-    // Repeated button.image= calls cause the status item to vanish on macOS 26.
 
-    // Feed live RMS into the wave overlay (always, regardless of state)
-    if (g_engine) {
-        auto bars = compute_level_bars(g_engine, 1);   // single bar = overall RMS
-        float rms = bars.empty() ? 0.0f : bars[0];
-        // Normalise: speech ≈ 0.01–0.10 → map to 0..1 with a gentle curve
-        float normalised = fminf(1.0f, rms * 12.0f);
-        self.waveOverlay.audioLevel = normalised;
+    // During LISTENING: refresh elapsed time display ~once per second
+    if (self.pillState == HeuUIStateListening && (self.animTick % 13) == 0) {
+        [self updatePill];
     }
 
-    // Live VU bars for the HUD during LISTENING
+    // During PROCESSING: advance spinner frame ~3x per second
+    if (self.pillState == HeuUIStateTranscribing && (self.animTick % 4) == 0) {
+        self.spinFrame = (self.spinFrame + 1) % 4;
+        [self updatePill];
+    }
+
+    // Live VU bars for the HUD during LISTENING (currently disabled but wired)
     if (self.uiState == HeuState::LISTENING && self.hudVisible && g_engine) {
         auto levels = compute_level_bars(g_engine, 14);
         NSMutableArray * bars = [NSMutableArray arrayWithCapacity:14];
@@ -274,65 +295,35 @@
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Icon drawing
+// Pill image management
 // ─────────────────────────────────────────────────────────────────────────────
 
-- (void)updateIcon {
-    NSString * label;
-    switch (self.uiState) {
-    case HeuState::DETECTING:   label = @"≋ heu"; break;
-    case HeuState::LISTENING:   label = @"● heu"; break;
-    case HeuState::PROCESSING:  label = @"◉ heu"; break;
+- (void)updatePill {
+    NSInteger elapsed = 0;
+    if (self.pillState == HeuUIStateListening) {
+        elapsed = (NSInteger)(CFAbsoluteTimeGetCurrent() - self.listenStartTime);
     }
-    self.statusItem.button.title = label;
-}
-
-- (NSImage *)iconForState:(HeuState)state tick:(int)__unused tick {
-    const CGFloat sz = 18.0;
-    int barCount = 5;
-    CGFloat barW = 2.0, gap = 1.5;
-    CGFloat totalW = barCount * barW + (barCount - 1) * gap;
-    CGFloat heights[] = {0.30f, 0.60f, 1.0f, 0.55f, 0.35f};
-
-    NSColor * color;
-    BOOL isTemplate = NO;
-    switch (state) {
-    case HeuState::DETECTING:
-        color = [NSColor colorWithWhite:0.75 alpha:1.0];
-        isTemplate = YES;
-        break;
-    case HeuState::LISTENING:
-        color = [NSColor colorWithRed:0.93 green:0.18 blue:0.18 alpha:1.0];
-        break;
-    case HeuState::PROCESSING:
-        color = [NSColor colorWithRed:1.0 green:0.55 blue:0.0 alpha:1.0];
-        break;
-    }
-
-    NSImage * img = [NSImage imageWithSize:NSMakeSize(sz, sz) flipped:NO
-                            drawingHandler:^BOOL(NSRect r) {
-        CGFloat cx = NSMidX(r), cy = NSMidY(r);
-        CGFloat startX = cx - totalW / 2.0;
-        CGFloat h0[] = {0.30f, 0.60f, 1.0f, 0.55f, 0.35f};
-        [color set];
-        for (int i = 0; i < barCount; i++) {
-            CGFloat h = (sz - 4) * h0[i];
-            NSRect bar = NSMakeRect(startX + i * (barW + gap), cy - h/2, barW, h);
-            [[NSBezierPath bezierPathWithRoundedRect:bar xRadius:1 yRadius:1] fill];
-        }
-        return YES;
-    }];
-    [img setTemplate:isTemplate];
-    return img;
+    NSImage * img = HeuPillImage(self.pillState,
+                                  elapsed,
+                                  self.lastWordCount,
+                                  self.spinFrame);
+    self.statusItem.button.image = img;
+    self.statusItem.button.title = @"";
 }
 
 - (void)flashDone {
-    __block int n = 0;
-    [NSTimer scheduledTimerWithTimeInterval:0.12 repeats:YES block:^(NSTimer * t) {
-        if (n >= 6) { [t invalidate]; [self updateIcon]; return; }
-        self.statusItem.button.title = (n % 2 == 0) ? @"✓ heu" : @"  heu";
-        n++;
-    }];
+    self.pillState = HeuUIStateDone;
+    [self updatePill];
+
+    __weak typeof(self) ws = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (!ws) return;
+        if (ws.pillState == HeuUIStateDone) {
+            ws.pillState = HeuUIStateIdle;
+            [ws updatePill];
+        }
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

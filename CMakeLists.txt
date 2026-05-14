@@ -49,21 +49,31 @@ target_link_libraries(heu_common PUBLIC whisper)
 # engine.cpp must come first: it defines MINIAUDIO_IMPLEMENTATION
 # before engine.hpp's include-guard pulls in miniaudio.h in declaration-only mode.
 add_executable(heu
-    src/engine.cpp           # MINIAUDIO_IMPLEMENTATION lives here — must be first
-    src/whisper_runner.cpp
-    src/processing_loop.cpp
-    src/HeuHUDView.mm
-    src/PillStatusView.mm
-    src/AppDelegate.mm
-    src/text_inserter.mm
-    src/hotkey.mm
-    src/ModelManager.mm
-    src/SettingsPanel.mm
-    src/main.mm
+    src/Engine/engine.cpp           # MINIAUDIO_IMPLEMENTATION lives here — must be first
+    src/Engine/whisper_runner.cpp
+    src/Engine/processing_loop.cpp
+    src/HUD/HeuHUDView.mm
+    src/HUD/WaveOverlay.mm
+    src/UI/StatusBar/PillStatusView.mm
+    src/App/AppDelegate.mm
+    src/Input/text_inserter.mm
+    src/Input/hotkey.mm
+    src/Model/ModelManager.mm
+    src/UI/Settings/MeterView.mm
+    src/UI/Settings/ModelRowView.mm
+    src/UI/Settings/SidebarView.mm
+    src/UI/Settings/SettingsPanel.mm
+    src/App/main.mm
 )
 
 target_include_directories(heu PRIVATE
-    src                      # engine.hpp, whisper_runner.hpp, etc.
+    src/App
+    src/Model
+    src/UI/Settings
+    src/UI/StatusBar
+    src/Engine
+    src/Input
+    src/HUD
     ${EXAMPLES_DIR}          # common.h, miniaudio.h
     ${WHISPER_ROOT}/include  # whisper.h
     ${WHISPER_ROOT}/ggml/include
@@ -78,6 +88,7 @@ target_compile_options(heu PRIVATE
 target_link_libraries(heu PRIVATE
     heu_common
     "-framework Cocoa"
+    "-framework QuartzCore"
     "-framework CoreAudio"
     "-framework AudioToolbox"
     "-framework Metal"

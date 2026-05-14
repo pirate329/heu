@@ -49,17 +49,18 @@ static NSString * const kHFBase =
     static NSArray * list;
     static dispatch_once_t t;
     dispatch_once(&t, ^{
+        // Columns: modelId, displayName, detail, sizeBytes, speedRT, speedFraction, accFraction, tierGroup
         NSArray * raw = @[
-            @[@"tiny.en",          @"Tiny · English",      @"Fastest, ~32× realtime",      @75000000],
-            @[@"tiny",             @"Tiny · Multilingual", @"Fastest, 99 languages",        @75000000],
-            @[@"base.en",          @"Base · English",      @"Fast, good accuracy",          @142000000],
-            @[@"base",             @"Base · Multilingual", @"Fast, 99 languages",           @142000000],
-            @[@"small.en",         @"Small · English",     @"Balanced speed & accuracy",    @466000000],
-            @[@"small",            @"Small · Multilingual",@"Balanced, 99 languages",       @466000000],
-            @[@"medium.en",        @"Medium · English",    @"Accurate, English only",       @1533000000],
-            @[@"medium",           @"Medium · Multilingual",@"Accurate, 99 languages",      @1533000000],
-            @[@"large-v3-turbo",   @"Large Turbo",         @"Fast + accurate, 99 languages",@809000000],
-            @[@"large-v3",         @"Large v3",            @"Best accuracy, 99 languages",  @2900000000],
+            @[@"tiny.en",        @"Tiny · English",       @"Fastest, ~32× realtime",       @75000000,   @32, @0.85, @0.38, @"FAST"],
+            @[@"tiny",           @"Tiny · Multilingual",  @"Fastest, 99 languages",         @75000000,   @30, @0.80, @0.38, @"FAST"],
+            @[@"base.en",        @"Base · English",       @"Fast, good accuracy",           @142000000,  @16, @0.65, @0.55, @"FAST"],
+            @[@"base",           @"Base · Multilingual",  @"Fast, 99 languages",            @142000000,  @14, @0.60, @0.58, @"FAST"],
+            @[@"small.en",       @"Small · English",      @"Balanced speed & accuracy",     @466000000,  @6,  @0.40, @0.75, @"BALANCED"],
+            @[@"small",          @"Small · Multilingual", @"Balanced, 99 languages",        @466000000,  @5,  @0.35, @0.78, @"BALANCED"],
+            @[@"medium.en",      @"Medium · English",     @"Accurate, English only",        @1533000000, @2,  @0.20, @0.88, @"ACCURATE"],
+            @[@"medium",         @"Medium · Multilingual",@"Accurate, 99 languages",        @1533000000, @2,  @0.18, @0.90, @"ACCURATE"],
+            @[@"large-v3-turbo", @"Large Turbo",          @"Fast + accurate, 99 languages", @809000000,  @3,  @0.28, @0.92, @"ACCURATE"],
+            @[@"large-v3",       @"Large v3",             @"Best accuracy, 99 languages",   @2900000000, @1,  @0.10, @0.95, @"ACCURATE"],
         ];
         NSMutableArray * out = [NSMutableArray array];
         for (NSArray * r in raw) {
@@ -68,6 +69,10 @@ static NSString * const kHFBase =
             m.displayName     = r[1];
             m.detail          = r[2];
             m.sizeBytes       = [r[3] longLongValue];
+            m.speedRT         = [r[4] integerValue];
+            m.speedFraction   = [r[5] floatValue];
+            m.accFraction     = [r[6] floatValue];
+            m.tierGroup       = r[7];
             [out addObject:m];
         }
         list = [out copy];
@@ -262,6 +267,13 @@ didCompleteWithError:(NSError *)error {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+- (long long)totalDiskUsageBytes {
+    long long total = 0;
+    for (WhisperModel * m in self.models)
+        if ([self isDownloaded:m]) total += m.sizeBytes;
+    return total;
+}
+
 - (WhisperModel *)modelForFilename:(NSString *)filename {
     for (WhisperModel * m in self.models)
         if ([m.filename isEqualToString:filename]) return m;

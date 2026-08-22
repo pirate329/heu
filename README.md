@@ -23,6 +23,27 @@ server, and nothing to sign into.
 It's deliberately small. The whole app is a 3.2 MB native binary; no Electron,
 no bundled browser. It sits in the menu bar all day without you noticing it.
 
+## Supported versions
+
+| macOS | Status |
+|---|---|
+| 26 Tahoe | Tested — this is what heu is developed on |
+| 15 Sequoia | Should work, not actively tested |
+| 14 Sonoma | Minimum supported, not actively tested |
+| 13 Ventura and earlier | Not supported — the app won't launch |
+
+**Apple Silicon only.** The binary is arm64-only, so Intel Macs can't run it at
+all, regardless of macOS version.
+
+The floor is macOS 14 because that's the deployment target the app is built
+against (`LSMinimumSystemVersion` in `src/Info.plist`). On macOS 13 the
+installer refuses outright rather than failing at runtime. If you run heu on 14
+or 15, I'd genuinely like to know whether it worked — open an issue either way.
+
+You'll also need a whisper.cpp `ggml-*.bin` model; heu can download one for you
+on first launch. Building from source additionally needs Xcode Command Line
+Tools and CMake 3.16+.
+
 ## Install
 
 Grab the DMG from [the latest release](https://github.com/pirate329/heu/releases/latest),

@@ -24,8 +24,8 @@ through Apple Metal. Audio is captured at 16 kHz and processed in real time.
 
 REQUIREMENTS
 ------------
-- macOS 13 or later (tested on macOS 26 Tahoe)
-- Apple Silicon (M1 or newer) recommended
+- macOS 14 (Sonoma) or later (tested on macOS 26 Tahoe)
+- Apple Silicon (M1 or newer) — required, the build is arm64-only
 - A whisper.cpp ggml model file (see MODELS section)
 - Xcode Command Line Tools
 - CMake 3.16+
@@ -85,7 +85,12 @@ Create /Applications/heu.app with the following structure:
             └── models/
                 └── ggml-small.en.bin  (symlink or copy)
 
-See Info.plist in the repo root for the required bundle configuration.
+See src/Info.plist for the required bundle configuration.
+
+Or just run the packaging script, which builds the bundle, ad-hoc signs it,
+and produces a distributable DMG in dist/:
+
+    bash scripts/package.sh
 
 
 PERMISSIONS
@@ -110,14 +115,25 @@ KEYBOARD SHORTCUT
 PROJECT STRUCTURE
 -----------------
     src/
-      main.mm              Entry point, arg parsing, Cocoa run loop
-      engine.hpp/.cpp      Audio capture (miniaudio), ring buffer, shared state
-      processing_loop.*    Background thread: VAD, whisper inference, wake word
-      whisper_runner.*     Whisper context wrapper
-      text_inserter.*      AX text insertion + Cmd+V clipboard fallback
-      hotkey.*             fn key event tap (push-to-talk)
-      AppDelegate.*        Menu bar item, HUD wiring, engine callbacks
-      HeuHUDView.*         On-screen listening / transcribing overlay
-      WaveOverlay.*        Fullscreen wave animation (top of screen)
-      ModelManager.*       Tracks currently loaded model path
-      SettingsPanel.*      Models & Settings menu panel
+      Info.plist                 Bundle configuration
+      App/
+        main.mm                  Entry point, arg parsing, Cocoa run loop
+        AppDelegate.*            Menu bar item, HUD wiring, engine callbacks
+      Engine/
+        engine.hpp/.cpp          Audio capture (miniaudio), ring buffer, shared state
+        processing_loop.*        Background thread: VAD, whisper inference, wake word
+        whisper_runner.*         Whisper context wrapper
+      Input/
+        hotkey.*                 fn key event tap (push-to-talk)
+        text_inserter.*          AX text insertion + Cmd+V clipboard fallback
+      HUD/
+        HeuHUDView.*             On-screen listening / transcribing overlay
+        WaveOverlay.*            Fullscreen wave animation (top of screen)
+      Model/
+        ModelManager.*           Tracks currently loaded model path
+      UI/
+        StatusBar/PillStatusView.*  Menu bar pill
+        Settings/SettingsPanel.*    Models & Settings panel
+        Settings/SidebarView.*      Settings sidebar
+        Settings/ModelRowView.*     Model list row
+        Settings/MeterView.*        Audio level meter

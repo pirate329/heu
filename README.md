@@ -46,18 +46,66 @@ Tools and CMake 3.16+.
 
 ## Install
 
-Grab the DMG from [the latest release](https://github.com/pirate329/heu/releases/latest),
-drag **heu** into Applications, then **right-click the app and choose Open** the
-first time.
+heu is ad-hoc signed, not notarized — I'm not paying Apple $99/year to give
+away a 3 MB app. That costs you one extra step on the download path, and
+nothing at all if you build it yourself.
 
-That last step isn't optional. The app is ad-hoc signed rather than notarized,
-so a normal double-click gets you "heu can't be opened because Apple cannot
-check it for malicious software." Right-click → Open gives you the same dialog
-with an Open button on it.
+### Build it yourself
 
-On first launch heu has no model yet, so it opens Settings and offers to
-download one. Pick `base.en` if you're not sure — it's 148 MB and fast enough
-to feel instant on any Apple Silicon Mac.
+```sh
+git clone https://github.com/ggerganov/whisper.cpp
+git clone https://github.com/pirate329/heu
+cd heu
+cmake -B build -S .
+cmake --build build -j$(sysctl -n hw.logicalcpu)
+bash scripts/package.sh
+cp -R dist/heu.app /Applications/
+```
+
+No Gatekeeper prompts on this path. macOS only blocks apps carrying a
+`com.apple.quarantine` flag, and that flag is attached by whatever *downloaded*
+the file — your browser. A binary you compiled locally never has it. You also
+get to read the source first, which is rather the point of an app that claims
+your audio never leaves the machine.
+
+Takes about a minute on an M-series Mac. Needs Xcode Command Line Tools and
+CMake 3.16+. The build expects whisper.cpp as a sibling of this repo, which is
+what those two clones give you:
+
+```
+.
+├── heu/          ← this repo
+└── whisper.cpp/
+```
+
+### Or download the DMG
+
+Grab it from [the latest release](https://github.com/pirate329/heu/releases/latest),
+drag **heu** into Applications, then run:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/heu.app
+```
+
+That removes the download flag your browser attached, and heu opens normally
+from then on. Only do this for software you're willing to trust — in this case
+the thing you're allowing is the repo you're reading.
+
+If you'd rather not touch the Terminal: double-click heu, click **Done** on the
+warning, then open **System Settings → Privacy & Security**, scroll to the
+Security section, and click **Open Anyway** next to the message about heu. The
+button is only offered for a short window after the failed launch, so do it
+right away.
+
+> **Note:** the old right-click → **Open** trick no longer works. Apple removed
+> that bypass in macOS 15 Sequoia, so on Sequoia and Tahoe it just shows you the
+> same refusal with no way through.
+
+### First launch
+
+heu starts with no model, so it opens Settings and offers to download one. Pick
+`base.en` if you're not sure — it's 148 MB and fast enough to feel instant on
+any Apple Silicon Mac.
 
 ### Permissions
 
@@ -108,24 +156,10 @@ be picked up. Larger models are more accurate and slower:
 The `.en` variants are English-only and beat the multilingual ones of the same
 size at English. Drop the suffix if you need other languages.
 
-## Building from source
+## Development
 
-You need Xcode Command Line Tools and CMake 3.16+. whisper.cpp is expected as a
-sibling directory:
-
-```
-wishper/
-├── heu/          ← this repo
-└── whisper.cpp/
-```
-
-```sh
-git clone https://github.com/ggerganov/whisper.cpp ../whisper.cpp
-cmake -B build -S .
-cmake --build build -j$(sysctl -n hw.logicalcpu)
-```
-
-Run it straight out of the build directory:
+Build it as described in [Install](#build-it-yourself), then run it straight out
+of the build directory:
 
 ```sh
 ./build/heu -m ~/Library/Application\ Support/heu/models/ggml-base.en.bin

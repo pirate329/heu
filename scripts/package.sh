@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$SCRIPT_DIR/.."
-VERSION="0.1"
+VERSION="0.1.1"
 APP_NAME="heu"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 
